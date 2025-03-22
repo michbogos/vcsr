@@ -18,6 +18,14 @@ vk::ShaderModule shaderFromFile(vk::Device device, std::string file){
 }
 
 int main(){
+    // float a[1024];
+    // // float b[1024];
+    // for(int i = 0; i < 1024; i++){
+    //     a[i] = 1.5;
+    //     // b[i] = 2.5;
+    // }
+
+    
     std::cout << "Vulkan Compute Shader Runtime\n";
 
     vk::Instance instance;
@@ -78,30 +86,101 @@ int main(){
     pipelineShaderStageCreateInfo.module = shader;
     pipelineShaderStageCreateInfo.pName = "main";
 
+    vk::BufferCreateInfo bufferCreateInfo;
+    bufferCreateInfo.usage = vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst;
+    bufferCreateInfo.size = 1024*sizeof(float);
+    vk::Buffer inBuffer = device.createBuffer(bufferCreateInfo);
+    vk::Buffer outBuffer = device.createBuffer(bufferCreateInfo);
+
+    vk::MemoryAllocateInfo memoryAllocateInfo;
+    memoryAllocateInfo.allocationSize = 1024*sizeof(float);
+    vk::DeviceMemory inBufferMemory = device.allocateMemory(memoryAllocateInfo);
+    vk::DeviceMemory outBufferMemory = device.allocateMemory(memoryAllocateInfo);
+    device.bindBufferMemory(inBuffer, inBufferMemory, 0);
+    device.bindBufferMemory(outBuffer, outBufferMemory, 0);
+
+    // auto dataPtr = device.mapMemory(inBufferMemory, 0, 1024*sizeof(float));
+    // memcpy(dataPtr, a, 1024*sizeof(float));
+    // device.unmapMemory(inBufferMemory);
+
     // vk::DescriptorPoolCreateInfo descriptorPoolCreateInfo;
     // descriptorPoolCreateInfo.
 
-    vk::DescriptorSetLayoutBinding descriptorSetLayoutBinding;
-    descriptorSetLayoutBinding.binding = 0;
-    descriptorSetLayoutBinding.descriptorCount = 1;
-    descriptorSetLayoutBinding.descriptorType = vk::DescriptorType::e
+    std::vector<vk::DescriptorSetLayoutBinding> bufferDescriptors(2);
+    bufferDescriptors[0].binding = 0;
+    bufferDescriptors[0].descriptorCount = 1;
+    bufferDescriptors[0].descriptorType = vk::DescriptorType::eUniformBuffer;
+    bufferDescriptors[0].stageFlags = vk::ShaderStageFlagBits::eCompute;
+    bufferDescriptors[1].binding = 1;
+    bufferDescriptors[1].descriptorCount = 1;
+    bufferDescriptors[1].descriptorType = vk::DescriptorType::eStorageBuffer;
+    bufferDescriptors[1].stageFlags = vk::ShaderStageFlagBits::eCompute;
 
-    vk::DescriptorSetLayoutCreateInfo descriptorSetCreateInfo;
-    descriptorSetCreateInfo.pBindings
+    vk::DescriptorSetLayoutCreateInfo layoutCreateInfo;
+    layoutCreateInfo.bindingCount = 2;
+    layoutCreateInfo.pBindings = bufferDescriptors.data();
+    vk::DescriptorSetLayout descriptorSetLayout = device.createDescriptorSetLayout(layoutCreateInfo);
 
-    device.createDescriptorSetLayout()
+    std::vector<vk::DescriptorPoolSize> descriptorPoolSizes(2);
+    descriptorPoolSizes[0].descriptorCount = 1;
+    descriptorPoolSizes[0].type = vk::DescriptorType::eUniformBuffer;
+    descriptorPoolSizes[1].descriptorCount = 2;
+    descriptorPoolSizes[1].type = vk::DescriptorType::eStorageBuffer;
+
+    vk::DescriptorPoolCreateInfo descriptorPoolCreateInfo;
+    descriptorPoolCreateInfo.poolSizeCount = descriptorPoolSizes.size();
+    descriptorPoolCreateInfo.pPoolSizes = descriptorPoolSizes.data();
+    descriptorPoolCreateInfo.maxSets = 1;
+    vk::DescriptorPool descriptorPool = device.createDescriptorPool(descriptorPoolCreateInfo);
+
+    vk::DescriptorSetAllocateInfo descriptorSetAllocateInfo;
+    descriptorSetAllocateInfo.descriptorPool = descriptorPool;
+    descriptorSetAllocateInfo.pSetLayouts = &descriptorSetLayout;
+    descriptorSetAllocateInfo.descriptorSetCount = 1;
+    vk::DescriptorSet descriptorSet = device.allocateDescriptorSets(descriptorSetAllocateInfo)[0];
+
+
 
     vk::PipelineLayoutCreateInfo pipelineLayoutCreateInfo;
-    pipelineLayoutCreateInfo.pSetLayouts = 
+    pipelineLayoutCreateInfo.setLayoutCount = 1;
+    pipelineLayoutCreateInfo.pSetLayouts = &descriptorSetLayout;
+    vk::PipelineLayout pipelineLayout = device.createPipelineLayout(pipelineLayoutCreateInfo);
+
+    // vk::PipelineCacheCreateInfo pipelineCacheCreateInfo;
+    // pipelineCacheCreateInfo.initialDataSize
 
     vk::ComputePipelineCreateInfo computePipelineCreateInfo;
     computePipelineCreateInfo.sType = vk::StructureType::eComputePipelineCreateInfo;
     computePipelineCreateInfo.stage = pipelineShaderStageCreateInfo;
-    computePipelineCreateInfo.layout = 
+    computePipelineCreateInfo.layout = pipelineLayout;
+    vk::Pipeline pipeline = device.createComputePipeline(VK_NULL_HANDLE, computePipelineCreateInfo).value;
 
-    vk::PipelineCacheCreateInfo pipelineCacheCreateInfo;
-    pipelineCacheCreateInfo.
+    vk::CommandPoolCreateInfo commandPoolCreateInfo;
+    commandPoolCreateInfo.flags = vk::CommandPoolCreateFlagBits::eResetCommandBuffer;
+    commandPoolCreateInfo.queueFamilyIndex = queueFamilyIndex;
+    vk::CommandPool commandPool = device.createCommandPool(commandPoolCreateInfo);
 
-    auto computePipeline = device.createComputePipeline(device.createPipelineCache())
+    vk::CommandBufferAllocateInfo commandBufferAllocateInfo;
+    commandBufferAllocateInfo.commandPool = commandPool;
+    commandBufferAllocateInfo.level = vk::CommandBufferLevel::ePrimary;
+    commandBufferAllocateInfo.commandBufferCount = 1;
+    vk::CommandBuffer commandBuffer = device.allocateCommandBuffers(commandBufferAllocateInfo)[0];
+    
+    std::vector<uint32_t> dynamicOffsets;
+    vk::CommandBufferBeginInfo commandBufferBeginInfo;
+    commandBuffer.begin(commandBufferBeginInfo);
+    commandBuffer.bindPipeline(vk::PipelineBindPoint::eCompute, pipeline);
+    commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eCompute, pipelineLayout, 0, descriptorSet, {0});
+    commandBuffer.dispatch(1024, 1 , 1);
+    commandBuffer.end();
+    
+    vk::SubmitInfo submitInfo;
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = &commandBuffer;
+
+    vk::FenceCreateInfo fenceCreateInfo;
+    vk::Fence fence = device.createFence(fenceCreateInfo);
+
+    queue.submit({submitInfo}, fence);
     return 0;
 }
