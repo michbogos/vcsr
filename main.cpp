@@ -87,17 +87,16 @@ int main(){
     pipelineShaderStageCreateInfo.pName = "main";
 
     vk::BufferCreateInfo bufferCreateInfo;
-    bufferCreateInfo.usage = vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst;
+    bufferCreateInfo.sType = vk::StructureType::eBufferCreateInfo;
+    bufferCreateInfo.usage = vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eTransferSrc;
     bufferCreateInfo.size = 1024*sizeof(float);
     vk::Buffer inBuffer = device.createBuffer(bufferCreateInfo);
-    vk::Buffer outBuffer = device.createBuffer(bufferCreateInfo);
 
     vk::MemoryAllocateInfo memoryAllocateInfo;
+    memoryAllocateInfo.sType = vk::StructureType::eMemoryAllocateInfo;
     memoryAllocateInfo.allocationSize = 1024*sizeof(float);
     vk::DeviceMemory inBufferMemory = device.allocateMemory(memoryAllocateInfo);
-    vk::DeviceMemory outBufferMemory = device.allocateMemory(memoryAllocateInfo);
     device.bindBufferMemory(inBuffer, inBufferMemory, 0);
-    device.bindBufferMemory(outBuffer, outBufferMemory, 0);
 
     // auto dataPtr = device.mapMemory(inBufferMemory, 0, 1024*sizeof(float));
     // memcpy(dataPtr, a, 1024*sizeof(float));
@@ -106,26 +105,20 @@ int main(){
     // vk::DescriptorPoolCreateInfo descriptorPoolCreateInfo;
     // descriptorPoolCreateInfo.
 
-    std::vector<vk::DescriptorSetLayoutBinding> bufferDescriptors(2);
+    std::vector<vk::DescriptorSetLayoutBinding> bufferDescriptors(1);
     bufferDescriptors[0].binding = 0;
     bufferDescriptors[0].descriptorCount = 1;
-    bufferDescriptors[0].descriptorType = vk::DescriptorType::eUniformBuffer;
+    bufferDescriptors[0].descriptorType = vk::DescriptorType::eStorageBuffer;
     bufferDescriptors[0].stageFlags = vk::ShaderStageFlagBits::eCompute;
-    bufferDescriptors[1].binding = 1;
-    bufferDescriptors[1].descriptorCount = 1;
-    bufferDescriptors[1].descriptorType = vk::DescriptorType::eStorageBuffer;
-    bufferDescriptors[1].stageFlags = vk::ShaderStageFlagBits::eCompute;
 
     vk::DescriptorSetLayoutCreateInfo layoutCreateInfo;
-    layoutCreateInfo.bindingCount = 2;
+    layoutCreateInfo.bindingCount = 1;
     layoutCreateInfo.pBindings = bufferDescriptors.data();
     vk::DescriptorSetLayout descriptorSetLayout = device.createDescriptorSetLayout(layoutCreateInfo);
 
     std::vector<vk::DescriptorPoolSize> descriptorPoolSizes(2);
     descriptorPoolSizes[0].descriptorCount = 1;
-    descriptorPoolSizes[0].type = vk::DescriptorType::eUniformBuffer;
-    descriptorPoolSizes[1].descriptorCount = 2;
-    descriptorPoolSizes[1].type = vk::DescriptorType::eStorageBuffer;
+    descriptorPoolSizes[0].type = vk::DescriptorType::eStorageBuffer;
 
     vk::DescriptorPoolCreateInfo descriptorPoolCreateInfo;
     descriptorPoolCreateInfo.poolSizeCount = descriptorPoolSizes.size();
@@ -139,7 +132,21 @@ int main(){
     descriptorSetAllocateInfo.descriptorSetCount = 1;
     vk::DescriptorSet descriptorSet = device.allocateDescriptorSets(descriptorSetAllocateInfo)[0];
 
+    vk::DescriptorBufferInfo descriptorBufferInfo;
+    descriptorBufferInfo.buffer = inBuffer;
+    descriptorBufferInfo.offset = 0;
+    descriptorBufferInfo.range = sizeof(inBuffer);
 
+    std::vector<vk::WriteDescriptorSet> writeDescriptorSets(1);
+    writeDescriptorSets[0].descriptorCount = 1;
+    writeDescriptorSets[0].descriptorType = vk::DescriptorType::eStorageBuffer;
+    writeDescriptorSets[0].pBufferInfo = &descriptorBufferInfo;
+    writeDescriptorSets[0].dstSet = descriptorSet;
+    writeDescriptorSets[0].dstBinding = 0;
+    writeDescriptorSets[0].dstArrayElement = 0;
+    writeDescriptorSets[0].descriptorType = vk::DescriptorType::eStorageBuffer;
+
+    device.updateDescriptorSets(writeDescriptorSets, VK_NULL_HANDLE);
 
     vk::PipelineLayoutCreateInfo pipelineLayoutCreateInfo;
     pipelineLayoutCreateInfo.setLayoutCount = 1;
@@ -182,5 +189,11 @@ int main(){
     vk::Fence fence = device.createFence(fenceCreateInfo);
 
     queue.submit({submitInfo}, fence);
+    queue.waitIdle();
+
+    auto data = device.mapMemory(inBufferMemory, 0, 1024*sizeof(float));
+    for(int i = 0; i < 1024; i++){
+        std::cout << ((float*)data)[i] << "\n";
+    }
     return 0;
 }
