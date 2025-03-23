@@ -19,7 +19,7 @@ vk::ShaderModule shaderFromFile(vk::Device device, std::string file){
 
 int main(){
     // float a[1024];
-    // // float b[1024];
+    // // // float b[1024];
     // for(int i = 0; i < 1024; i++){
     //     a[i] = 1.5;
     //     // b[i] = 2.5;
@@ -92,9 +92,19 @@ int main(){
     bufferCreateInfo.size = 1024*sizeof(float);
     vk::Buffer inBuffer = device.createBuffer(bufferCreateInfo);
 
+    vk::MemoryRequirements memoryRequirements = device.getBufferMemoryRequirements(inBuffer);
+    uint32_t memoryTypeIndex = 0;
+    for(uint32_t memIdx = 0; memIdx < physicalDevice.getMemoryProperties().memoryTypeCount; memIdx++){
+        if(physicalDevice.getMemoryProperties().memoryTypes[memIdx].propertyFlags&(vk::MemoryPropertyFlagBits::eHostVisible|vk::MemoryPropertyFlagBits::eHostCoherent)){
+            memoryTypeIndex = memIdx;
+            // std::cout << memoryTypeIndex << "\n";
+        }
+    }
+
     vk::MemoryAllocateInfo memoryAllocateInfo;
     memoryAllocateInfo.sType = vk::StructureType::eMemoryAllocateInfo;
-    memoryAllocateInfo.allocationSize = 1024*sizeof(float);
+    memoryAllocateInfo.allocationSize = memoryRequirements.size;
+    memoryAllocateInfo.memoryTypeIndex = memoryTypeIndex;
     vk::DeviceMemory inBufferMemory = device.allocateMemory(memoryAllocateInfo);
     device.bindBufferMemory(inBuffer, inBufferMemory, 0);
 
@@ -116,7 +126,7 @@ int main(){
     layoutCreateInfo.pBindings = bufferDescriptors.data();
     vk::DescriptorSetLayout descriptorSetLayout = device.createDescriptorSetLayout(layoutCreateInfo);
 
-    std::vector<vk::DescriptorPoolSize> descriptorPoolSizes(2);
+    std::vector<vk::DescriptorPoolSize> descriptorPoolSizes(1);
     descriptorPoolSizes[0].descriptorCount = 1;
     descriptorPoolSizes[0].type = vk::DescriptorType::eStorageBuffer;
 
@@ -144,7 +154,6 @@ int main(){
     writeDescriptorSets[0].dstSet = descriptorSet;
     writeDescriptorSets[0].dstBinding = 0;
     writeDescriptorSets[0].dstArrayElement = 0;
-    writeDescriptorSets[0].descriptorType = vk::DescriptorType::eStorageBuffer;
 
     device.updateDescriptorSets(writeDescriptorSets, VK_NULL_HANDLE);
 
@@ -191,9 +200,9 @@ int main(){
     queue.submit({submitInfo}, fence);
     queue.waitIdle();
 
-    auto data = device.mapMemory(inBufferMemory, 0, 1024*sizeof(float));
-    for(int i = 0; i < 1024; i++){
-        std::cout << ((float*)data)[i] << "\n";
-    }
+    // auto data = device.mapMemory(inBufferMemory, 0, 1024*sizeof(float));
+    // for(int i = 0; i < 1024; i++){
+    //     std::cout << ((float*)data)[i] << "\n";
+    // }
     return 0;
 }
